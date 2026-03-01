@@ -2,11 +2,8 @@ name: Daily Telegram Alert
 
 on:
   schedule:
-    # 9:00am AEDT (UTC+11) = 22:00 UTC
-    # 9:00am AEST (UTC+10) = 23:00 UTC
-    # Running at 23:00 UTC covers both daylight saving periods
     - cron: "0 23 * * 1-5"
-  workflow_dispatch:  # allow manual trigger for testing
+  workflow_dispatch:
 
 jobs:
   send-alert:
