@@ -280,7 +280,7 @@
         if (chartWidget) { chartWidget.remove(); chartWidget = null; }
         chartWidget = new TradingView.widget({
             allow_symbol_change: true, calendar: false, details: true, hide_side_toolbar: false, hide_top_toolbar: false,
-            hide_legend: false, hide_volume: true, hotlist: false, interval: 'D', locale: 'en', save_image: false,
+            hide_legend: false, hide_volume: true, hotlist: false, interval: 'W', locale: 'en', save_image: false,
             style: '1', symbol: symbol, theme: 'dark', timezone: 'America/Toronto', toolbar_bg: '#1a1a1a', backgroundColor: '#1a1a1a',
             gridColor: 'rgba(255,255,255,0.1)', watchlist: [], withdateranges: true, studies: ['STD;MA%Ribbon', 'Volume@tv-basicstudies'],
             autosize: true, enable_publishing: false, container_id: 'tradingview-chart'
@@ -401,8 +401,13 @@
         var defaultSymbol = (meta && meta.default_symbol) ? meta.default_symbol : 'QQQE';
         initChart(defaultSymbol);
         if (allTickerRows.length > 0) {
-            allTickerRows[0].classList.add('active');
-        }
+    allTickerRows[0].classList.add('active');
+}
+// Auto-sort every group by Grade (A → B → C) on load
+document.querySelectorAll('.ticker-table').forEach(function(table) {
+    var g = table.getAttribute('data-group');
+    if (g) window.sortGroup(g, 'abc');
+});
         document.addEventListener('keydown', function(e) {
             if (e.key === 'ArrowDown') { e.preventDefault(); if (currentIndex < allTickerRows.length - 1) { currentIndex++; updateChart(allTickerRows[currentIndex].getAttribute('data-symbol'), allTickerRows[currentIndex]); } }
             if (e.key === 'ArrowUp')   { e.preventDefault(); if (currentIndex > 0) { currentIndex--; updateChart(allTickerRows[currentIndex].getAttribute('data-symbol'), allTickerRows[currentIndex]); } }
