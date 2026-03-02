@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Daily alert — tickers from Indices, Sel Sectors and Industries with daily move > +1%.
-All grades (A, B, C) included. Sorted best to worst within each group.
+Daily alert — market narrative + tickers from Indices, Sel Sectors and Industries
+with daily move > +1%. No external dependencies required.
 """
 
 import json
@@ -9,12 +9,14 @@ import os
 import sys
 import urllib.request
 import urllib.parse
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
 TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 THRESHOLD        = 1.0
 ALERT_GROUPS     = ["Indices", "Sel Sectors", "Industries"]
+MAX_HEADLINES    = 5
 
 NAMES = {
     # Indices
@@ -57,6 +59,27 @@ NAMES = {
 }
 
 
+def get_headlines():
+    """Fetch top market headlines from Yahoo Finance RSS."""
+    try:
+        url = "https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5EGSPC&region=US&lang=en-US"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            xml_data = resp.read()
+        root = ET.fromstring(xml_data)
+        headlines = []
+        for item in root.findall(".//item"):
+            title = item.findtext("title")
+            if title:
+                headlines.append(title.strip())
+            if len(headlines) >= MAX_HEADLINES:
+                break
+        return headlines
+    except Exception as e:
+        print(f"Could not fetch headlines: {e}")
+        return []
+
+
 def send_telegram(message):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
         print("ERROR: TELEGRAM_TOKEN or TELEGRAM_CHAT_ID not set.", file=sys.stderr)
@@ -86,17 +109,26 @@ def main():
     now_str = datetime.now(timezone.utc).strftime("%d %b %Y")
     all_groups = snapshot.get("groups", {})
 
-    lines = [f"📊 <b>Market Movers &gt;+{THRESHOLD}% — {now_str}</b>"]
+    lines = [f"📊 <b>Morning Market Brief — {now_str}</b>"]
+
+    # ── Market Headlines ──────────────────────────────────
+    headlines = get_headlines()
+    if headlines:
+        lines.append("\n<b>── Market Headlines ──</b>")
+        for h in headlines:
+            lines.append(f"• {h}")
+
+    # ── Movers ───────────────────────────────────────────
     total = 0
+    lines.append(f"\n<b>── Movers &gt;+{THRESHOLD}% ──</b>")
 
     for group_name in ALERT_GROUPS:
         rows = all_groups.get(group_name, [])
-        # All grades, only filter by daily move > threshold
         movers = [r for r in rows if r.get("daily") is not None and r["daily"] >= THRESHOLD]
         movers.sort(key=lambda r: r["daily"], reverse=True)
 
         if movers:
-            lines.append(f"\n<b>── {group_name} ──</b>")
+            lines.append(f"\n<i>{group_name}</i>")
             for r in movers:
                 ticker = r.get("ticker", "?")
                 name   = NAMES.get(ticker, ticker)
@@ -106,7 +138,7 @@ def main():
             total += len(movers)
 
     if total == 0:
-        lines.append(f"\nNo tickers moved more than +{THRESHOLD}% yesterday.")
+        lines.append(f"No tickers moved more than +{THRESHOLD}% yesterday.")
     else:
         lines.append(f"\n<i>{total} ticker(s) above +{THRESHOLD}%</i>")
 
