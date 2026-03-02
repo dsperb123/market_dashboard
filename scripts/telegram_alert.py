@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Daily alert — market narrative + tickers from Indices, Sel Sectors and Industries
-with daily move > +1%. No external dependencies required.
+Daily alert — market headlines from MarketWatch + Seeking Alpha,
+plus tickers from Indices, Sel Sectors and Industries with daily move > +1%.
+No external dependencies required.
 """
 
 import json
@@ -16,7 +17,7 @@ TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 THRESHOLD        = 1.0
 ALERT_GROUPS     = ["Indices", "Sel Sectors", "Industries"]
-MAX_HEADLINES    = 5
+MAX_HEADLINES    = 4  # per source
 
 NAMES = {
     # Indices
@@ -58,11 +59,15 @@ NAMES = {
     "GXC":"SPDR S&P China ETF","XHE":"SPDR S&P Health Care Equipment ETF",
 }
 
+RSS_FEEDS = [
+    ("MarketWatch", "https://feeds.content.dowjones.io/public/rss/mw_marketpulse"),
+    ("Seeking Alpha", "https://seekingalpha.com/market_currents.xml"),
+]
 
-def get_headlines():
-    """Fetch top market headlines from Yahoo Finance RSS."""
+
+def fetch_headlines(name, url):
+    """Fetch headlines from an RSS feed."""
     try:
-        url = "https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5EGSPC&region=US&lang=en-US"
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=10) as resp:
             xml_data = resp.read()
@@ -76,7 +81,7 @@ def get_headlines():
                 break
         return headlines
     except Exception as e:
-        print(f"Could not fetch headlines: {e}")
+        print(f"Could not fetch {name} headlines: {e}")
         return []
 
 
@@ -111,16 +116,17 @@ def main():
 
     lines = [f"📊 <b>Morning Market Brief — {now_str}</b>"]
 
-    # ── Market Headlines ──────────────────────────────────
-    headlines = get_headlines()
-    if headlines:
-        lines.append("\n<b>── Market Headlines ──</b>")
-        for h in headlines:
-            lines.append(f"• {h}")
+    # ── Headlines ─────────────────────────────────────────
+    for feed_name, feed_url in RSS_FEEDS:
+        headlines = fetch_headlines(feed_name, feed_url)
+        if headlines:
+            lines.append(f"\n<b>── {feed_name} ──</b>")
+            for h in headlines:
+                lines.append(f"• {h}")
 
-    # ── Movers ───────────────────────────────────────────
+    # ── Movers ────────────────────────────────────────────
     total = 0
-    lines.append(f"\n<b>── Movers &gt;+{THRESHOLD}% ──</b>")
+    mover_lines = []
 
     for group_name in ALERT_GROUPS:
         rows = all_groups.get(group_name, [])
@@ -128,18 +134,20 @@ def main():
         movers.sort(key=lambda r: r["daily"], reverse=True)
 
         if movers:
-            lines.append(f"\n<i>{group_name}</i>")
+            mover_lines.append(f"\n<i>{group_name}</i>")
             for r in movers:
                 ticker = r.get("ticker", "?")
                 name   = NAMES.get(ticker, ticker)
                 daily  = r["daily"]
                 grade  = r.get("abc", "?")
-                lines.append(f"<b>{ticker}</b> [{grade}]  +{daily:.2f}%  —  {name}")
+                mover_lines.append(f"<b>{ticker}</b> [{grade}]  +{daily:.2f}%  —  {name}")
             total += len(movers)
 
+    lines.append(f"\n<b>── Movers &gt;+{THRESHOLD}% ──</b>")
     if total == 0:
         lines.append(f"No tickers moved more than +{THRESHOLD}% yesterday.")
     else:
+        lines.extend(mover_lines)
         lines.append(f"\n<i>{total} ticker(s) above +{THRESHOLD}%</i>")
 
     message = "\n".join(lines)
